@@ -1,12 +1,12 @@
 /**
- * @file dslutils.hpp
+ * @file DSLUtils.hpp
  * @brief Header-only DSL construction toolkit for modern C++ (C++20)
  *
  * ============================================================
  *  OVERVIEW
  * ============================================================
  *
- * dslutils.hpp provides a set of composable "feature mixins" that you
+ * DSLUtils.hpp provides a set of composable "feature mixins" that you
  * attach to a CRTP base class to build Domain-Specific Languages entirely
  * in headers, with zero runtime overhead where possible.
  *
@@ -38,10 +38,10 @@
  *
  * Step 3 — Expose to users via a thin wrapper header (mydsl.hpp):
  *
- *   #include "dslutils.hpp"
+ *   #include "DSLUtils.hpp"
  *   struct MathDSL : dsl::DSL<MathDSL, dsl::Pipeline, dsl::Operators> { ... };
  *
- * Users only include mydsl.hpp — they never see dslutils.hpp directly.
+ * Users only include mydsl.hpp — they never see DSLUtils.hpp directly.
  *
  * ============================================================
  *  FEATURE REFERENCE
@@ -339,7 +339,7 @@
  *
  *   - C++20 or later (uses concepts, NTTPs, constexpr lambdas)
  *   - No external dependencies
- *   - Header-only: just #include "dslutils.hpp"
+ *   - Header-only: just #include "DSLUtils.hpp"
  * ============================================================
  */
 
@@ -348,6 +348,7 @@
 #include <algorithm>
 #include <array>
 #include <concepts>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -2134,7 +2135,59 @@ struct ParsecInput
     return source.substr (start, pos - start);
   }
 };
-template <typename T> using ExpectedResult = std::optional<T>;
+
+inline Result<std::string, std::string>
+load_parse_input_file (const std::string &path)
+{
+  std::ifstream in (path, std::ios::in | std::ios::binary);
+  if (!in)
+    return Result<std::string, std::string>::from_err (
+        "dsl::load_parse_input_file: cannot open '" + path + "'");
+  std::ostringstream ss;
+  ss << in.rdbuf ();
+  if (!in.good () && !in.eof ())
+    return Result<std::string, std::string>::from_err (
+        "dsl::load_parse_input_file: read failed for '" + path + "'");
+  return Result<std::string, std::string>::from_ok (ss.str ());
+}
+enum class ParseFailureKind
+{
+  Soft,
+  Committed
+};
+
+struct ParseError
+{
+  std::size_t pos{ 0 };
+  ParseFailureKind kind{ ParseFailureKind::Soft };
+  std::vector<std::string> expected{};
+};
+
+template <typename T> struct ExpectedResult
+{
+  using value_type = T;
+
+  std::optional<T> value{};
+  ParseError error{};
+
+  ExpectedResult () = default;
+  ExpectedResult (std::nullopt_t) : value (std::nullopt) {}
+  ExpectedResult (const T &v) : value (v) {}
+  ExpectedResult (T &&v) : value (std::move (v)) {}
+
+  static ExpectedResult
+  failure (std::size_t pos, ParseFailureKind kind = ParseFailureKind::Soft,
+           std::vector<std::string> expected = {})
+  {
+    ExpectedResult out{};
+    out.error = ParseError{ pos, kind, std::move (expected) };
+    return out;
+  }
+
+  explicit operator bool () const { return value.has_value (); }
+  T &operator* () { return *value; }
+  const T &operator* () const { return *value; }
+};
 
 /**
  * @brief Functional parser wrapper around `ExpectedResult<T>(ParsecInput&)`.
@@ -2150,6 +2203,34 @@ template <typename T> struct Parser
     return parse (input);
   }
 };
+
+inline void
+merge_error (ParseError &dst, const ParseError &src)
+{
+  if (src.pos > dst.pos)
+    {
+      dst = src;
+      return;
+    }
+  if (src.pos < dst.pos)
+    return;
+  if (src.kind == ParseFailureKind::Committed)
+    dst.kind = ParseFailureKind::Committed;
+  for (const auto &label : src.expected)
+    {
+      if (std::find (dst.expected.begin (), dst.expected.end (), label)
+          == dst.expected.end ())
+        dst.expected.push_back (label);
+    }
+}
+
+template <typename T>
+ExpectedResult<T>
+fail_expected (const ParsecInput &in, std::string label,
+               ParseFailureKind kind = ParseFailureKind::Soft)
+{
+  return ExpectedResult<T>::failure (in.pos, kind, { std::move (label) });
+}
 
 template <typename Fn>
 auto
@@ -2168,12 +2249,17 @@ operator* (const Parser<T> &p)
       [p] (ParsecInput &in) -> ExpectedResult<std::vector<T>>
         {
           std::vector<T> out;
+          ParseError best_err{};
           while (true)
             {
               std::size_t save = in.pos;
               auto r = p (in);
               if (!r)
                 {
+                  merge_error (best_err, r.error);
+                  if (r.error.kind == ParseFailureKind::Committed)
+                    return ExpectedResult<std::vector<T>>::failure (
+                        best_err.pos, best_err.kind, best_err.expected);
                   in.pos = save;
                   break;
                 }
@@ -2192,12 +2278,18 @@ operator& (const Parser<A> &a, const Parser<B> &b)
           auto save = in.pos;
           auto ra = a (in);
           if (!ra)
-            return std::nullopt;
+            return ExpectedResult<std::pair<A, B>>::failure (
+                ra.error.pos, ra.error.kind, ra.error.expected);
           auto rb = b (in);
           if (!rb)
             {
+              bool consumed = in.pos != save;
               in.pos = save;
-              return std::nullopt;
+              auto kind = rb.error.kind;
+              if (consumed)
+                kind = ParseFailureKind::Committed;
+              return ExpectedResult<std::pair<A, B>>::failure (
+                  rb.error.pos, kind, rb.error.expected);
             }
           return std::make_pair (*ra, *rb);
         });
@@ -2210,10 +2302,16 @@ operator| (const Parser<T> &a, const Parser<T> &b)
       [a, b] (ParsecInput &in) -> ExpectedResult<T>
         {
           auto save = in.pos;
-          if (auto ra = a (in))
+          auto ra = a (in);
+          if (ra)
+            return ra;
+          if (ra.error.kind == ParseFailureKind::Committed)
             return ra;
           in.pos = save;
-          return b (in);
+          auto rb = b (in);
+          if (!rb)
+            merge_error (rb.error, ra.error);
+          return rb;
         });
 }
 template <typename T>
@@ -2227,11 +2325,92 @@ optional (const Parser<T> &p)
           auto r = p (in);
           if (!r)
             {
+              if (r.error.kind == ParseFailureKind::Committed)
+                return ExpectedResult<std::optional<T>>::failure (
+                    r.error.pos, r.error.kind, r.error.expected);
               in.pos = save;
               return std::optional<T>{};
             }
           return std::optional<T>{ *r };
         });
+}
+
+template <typename T>
+Parser<T>
+try_parse (const Parser<T> &p)
+{
+  return parser ([p] (ParsecInput &in) -> ExpectedResult<T> {
+    auto save = in.pos;
+    auto r = p (in);
+    if (!r)
+      {
+        in.pos = save;
+        r.error.kind = ParseFailureKind::Soft;
+      }
+    return r;
+  });
+}
+
+template <typename T>
+Parser<T>
+labeled (const Parser<T> &p, std::string expected)
+{
+  return parser ([p, expected = std::move (expected)] (
+                     ParsecInput &in) -> ExpectedResult<T> {
+    auto r = p (in);
+    if (!r)
+      r.error.expected = { expected };
+    return r;
+  });
+}
+
+template <typename T>
+struct ParseOutcome
+{
+  std::optional<T> value{};
+  ParseError error{};
+};
+
+template <typename T>
+ParseOutcome<T>
+run_parser (const Parser<T> &p, std::string_view source)
+{
+  ParsecInput in{ source, 0 };
+  auto r = p (in);
+  if (!r)
+    return { std::nullopt, r.error };
+  if (!in.eof ())
+    {
+      ParseError trailing{ in.pos, ParseFailureKind::Committed,
+                           { "<end-of-input>" } };
+      return { std::nullopt, trailing };
+    }
+  return { std::move (r.value), {} };
+}
+
+inline Parser<char>
+ch (char c)
+{
+  return labeled (
+      parser ([c] (ParsecInput &in) -> ExpectedResult<char> {
+        if (in.peek () == c)
+          return in.consume ();
+        return fail_expected<char> (in, std::string (1, c));
+      }),
+      std::string (1, c));
+}
+
+inline Parser<char>
+satisfy (std::function<bool (char)> pred, std::string label)
+{
+  return labeled (
+      parser ([pred = std::move (pred), label] (
+                  ParsecInput &in) -> ExpectedResult<char> {
+        if (!in.eof () && pred (in.peek ()))
+          return in.consume ();
+        return fail_expected<char> (in, label);
+      }),
+      std::move (label));
 }
 
 enum class TaskPolicy

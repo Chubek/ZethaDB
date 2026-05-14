@@ -8,7 +8,7 @@ ZethaDB is a header-only, in-memory, schema-based database for C++.
 - explicit schemas and runtime type validation
 - tiny query DSL for insert/select/update/delete
 - parser and execution as separate phases
-- parser integration through `DSLUtils.hpp` combinators
+- parser integration through `DSLUtils.hpp` combinators using optional-style parser results
 
 ## Non-goals
 

@@ -368,7 +368,7 @@ inline void skip_ws(dsl::ParsecInput& in) {
 }
 
 inline dsl::Parser<char> symbol(char c) {
-    return dsl::parser([c](dsl::ParsecInput& in) -> dsl::ExpectedResult<char> {
+    return dsl::parser([c](dsl::ParsecInput& in) -> std::optional<char> {
         skip_ws(in);
         if (!in.eof() && in.peek() == c) {
             return in.consume();
@@ -378,7 +378,7 @@ inline dsl::Parser<char> symbol(char c) {
 }
 
 inline dsl::Parser<std::string> identifier() {
-    return dsl::parser([](dsl::ParsecInput& in) -> dsl::ExpectedResult<std::string> {
+    return dsl::parser([](dsl::ParsecInput& in) -> std::optional<std::string> {
         skip_ws(in);
         if (in.eof()) return std::nullopt;
         const char first = in.peek();
@@ -399,7 +399,7 @@ inline dsl::Parser<std::string> identifier() {
 }
 
 inline dsl::Parser<std::string> keyword(const std::string& kw) {
-    return dsl::parser([kw](dsl::ParsecInput& in) -> dsl::ExpectedResult<std::string> {
+    return dsl::parser([kw](dsl::ParsecInput& in) -> std::optional<std::string> {
         skip_ws(in);
         const std::size_t save = in.pos;
         for (char c : kw) {
@@ -423,7 +423,7 @@ inline dsl::Parser<std::string> keyword(const std::string& kw) {
 }
 
 inline dsl::Parser<std::string> string_literal() {
-    return dsl::parser([](dsl::ParsecInput& in) -> dsl::ExpectedResult<std::string> {
+    return dsl::parser([](dsl::ParsecInput& in) -> std::optional<std::string> {
         skip_ws(in);
         if (in.eof() || in.peek() != '"') return std::nullopt;
         in.consume();
@@ -452,7 +452,7 @@ inline dsl::Parser<std::string> string_literal() {
 }
 
 inline dsl::Parser<std::int64_t> integer_literal() {
-    return dsl::parser([](dsl::ParsecInput& in) -> dsl::ExpectedResult<std::int64_t> {
+    return dsl::parser([](dsl::ParsecInput& in) -> std::optional<std::int64_t> {
         skip_ws(in);
         const std::size_t save = in.pos;
 
@@ -472,7 +472,7 @@ inline dsl::Parser<std::int64_t> integer_literal() {
 }
 
 inline dsl::Parser<double> float_literal() {
-    return dsl::parser([](dsl::ParsecInput& in) -> dsl::ExpectedResult<double> {
+    return dsl::parser([](dsl::ParsecInput& in) -> std::optional<double> {
         skip_ws(in);
         const std::size_t save = in.pos;
 
@@ -507,7 +507,7 @@ inline dsl::Parser<double> float_literal() {
 }
 
 inline dsl::Parser<bool> bool_literal() {
-    return dsl::parser([](dsl::ParsecInput& in) -> dsl::ExpectedResult<bool> {
+    return dsl::parser([](dsl::ParsecInput& in) -> std::optional<bool> {
         const std::size_t save = in.pos;
         if (keyword("true")(in)) return true;
         in.pos = save;
@@ -517,15 +517,17 @@ inline dsl::Parser<bool> bool_literal() {
 }
 
 inline dsl::Parser<Value> value_literal() {
-    return dsl::parser([](dsl::ParsecInput& in) -> dsl::ExpectedResult<Value> {
+    return dsl::parser([](dsl::ParsecInput& in) -> std::optional<Value> {
         const std::size_t save = in.pos;
-        if (auto s = string_literal()(in)) return Value{*s};
-        in.pos = save;
-        if (auto d = float_literal()(in)) return Value{*d};
-        in.pos = save;
-        if (auto i = integer_literal()(in)) return Value{*i};
-        in.pos = save;
-        if (auto b = bool_literal()(in)) return Value{*b};
+        const auto try_parse = [&in, save](const auto& parser, auto map_fn) -> std::optional<Value> {
+            in.pos = save;
+            if (auto parsed = parser(in)) return map_fn(*parsed);
+            return std::nullopt;
+        };
+        if (auto s = try_parse(string_literal(), [](const std::string& v) { return Value{v}; })) return s;
+        if (auto d = try_parse(float_literal(), [](double v) { return Value{v}; })) return d;
+        if (auto i = try_parse(integer_literal(), [](std::int64_t v) { return Value{v}; })) return i;
+        if (auto b = try_parse(bool_literal(), [](bool v) { return Value{v}; })) return b;
         in.pos = save;
         return std::nullopt;
     });
@@ -540,26 +542,26 @@ inline ValueType parse_type_name(const std::string& s) {
 }
 
 inline dsl::Parser<CompareOp> comparison_op() {
-    return dsl::parser([](dsl::ParsecInput& in) -> dsl::ExpectedResult<CompareOp> {
+    return dsl::parser([](dsl::ParsecInput& in) -> std::optional<CompareOp> {
         const std::size_t save = in.pos;
-        if (keyword("==")(in)) return CompareOp::Eq;
-        in.pos = save;
-        if (keyword("!=")(in)) return CompareOp::Ne;
-        in.pos = save;
-        if (keyword("<=")(in)) return CompareOp::Le;
-        in.pos = save;
-        if (keyword(">=")(in)) return CompareOp::Ge;
-        in.pos = save;
-        if (keyword("<")(in)) return CompareOp::Lt;
-        in.pos = save;
-        if (keyword(">")(in)) return CompareOp::Gt;
+        const auto parse_token = [&in, save](std::string_view token, CompareOp op) -> std::optional<CompareOp> {
+            in.pos = save;
+            if (keyword(std::string(token))(in)) return op;
+            return std::nullopt;
+        };
+        if (auto op = parse_token("==", CompareOp::Eq)) return op;
+        if (auto op = parse_token("!=", CompareOp::Ne)) return op;
+        if (auto op = parse_token("<=", CompareOp::Le)) return op;
+        if (auto op = parse_token(">=", CompareOp::Ge)) return op;
+        if (auto op = parse_token("<", CompareOp::Lt)) return op;
+        if (auto op = parse_token(">", CompareOp::Gt)) return op;
         in.pos = save;
         return std::nullopt;
     });
 }
 
 inline dsl::Parser<Predicate> predicate() {
-    return dsl::parser([](dsl::ParsecInput& in) -> dsl::ExpectedResult<Predicate> {
+    return dsl::parser([](dsl::ParsecInput& in) -> std::optional<Predicate> {
         auto id = identifier()(in);
         if (!id) return std::nullopt;
         auto op = comparison_op()(in);
