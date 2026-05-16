@@ -1,16 +1,16 @@
 cmake_minimum_required(VERSION 3.16)
-project(zethadb LANGUAGES CXX)
+project(zethamem LANGUAGES CXX)
 enable_testing()
 
-option(ZETHADB_BUILD_TESTS "Build ZethaDB unit tests" ON)
-option(ZETHADB_BUILD_FUZZ_TARGETS "Build ZethaDB AFL++ fuzz targets" OFF)
+option(ZETHADB_BUILD_TESTS "Build ZethaMEM unit tests" ON)
+option(ZETHADB_BUILD_FUZZ_TARGETS "Build ZethaMEM AFL++ fuzz targets" OFF)
 
-add_library(zethadb INTERFACE)
-target_include_directories(zethadb INTERFACE
+add_library(zethamem INTERFACE)
+target_include_directories(zethamem INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
 )
-target_compile_features(zethadb INTERFACE cxx_std_20)
+target_compile_features(zethamem INTERFACE cxx_std_20)
 
 if(ZETHADB_BUILD_TESTS)
     add_subdirectory(tests)
@@ -24,7 +24,7 @@ if(ZETHADB_BUILD_FUZZ_TARGETS)
     foreach(src ${ZETHADB_FUZZ_SOURCES})
         get_filename_component(target_name ${src} NAME_WE)
         add_executable(${target_name} ${src})
-        target_link_libraries(${target_name} PRIVATE zethadb)
+        target_link_libraries(${target_name} PRIVATE zethamem)
         target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         set_target_properties(${target_name} PROPERTIES
             CXX_STANDARD 20

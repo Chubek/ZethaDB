@@ -16,7 +16,7 @@
 
 #include "DSLUtils.hpp"
 
-namespace zethadb {
+namespace zethamem {
 
 struct Error : std::runtime_error {
     using std::runtime_error::runtime_error;
@@ -737,4 +737,4 @@ inline QueryResult exec_query(Database& db, std::string_view query_text) {
     return db.execute(parse_query(query_text));
 }
 
-} // namespace zethadb
+} // namespace zethamem

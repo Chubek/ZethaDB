@@ -1,6 +1,6 @@
 # Chapter 6 - Error Handling and Diagnostics
 
-Runtime and parser failures throw `zethadb::Error` with direct human-readable messages.
+Runtime and parser failures throw `zethamem::Error` with direct human-readable messages.
 
 Common diagnostics include:
 - duplicate column

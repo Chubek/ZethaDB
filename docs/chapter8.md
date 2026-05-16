@@ -3,7 +3,7 @@
 Embed with:
 
 ```cpp
-#include "ZethaDB.hpp"
+#include "ZethaMEM.hpp"
 ```
 
 Use helper API:
@@ -12,6 +12,6 @@ Use helper API:
 - `exec_schema`
 - `exec_query`
 
-Packaging metadata is provided via `zethadb.pc` for `pkg-config` workflows.
+Packaging metadata is provided via `zethamem.pc` for `pkg-config` workflows.
 
 Future work can extend nullable/default support and optional indexing while preserving header-only constraints.
