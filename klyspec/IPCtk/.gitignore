@@ -69,7 +69,8 @@ Testing/
 .cache/
 
 AGENTS.md
+IPC-L.md
+ITKD.md
 
-AllZethaFiles.md
-
-SMOKE_TEST.md
+*.sarif
+SERDE_USAGE.md

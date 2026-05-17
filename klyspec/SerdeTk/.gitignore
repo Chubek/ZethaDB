@@ -69,7 +69,4 @@ Testing/
 .cache/
 
 AGENTS.md
-
-AllZethaFiles.md
-
-SMOKE_TEST.md
+*.sarif
