@@ -33,6 +33,13 @@ set_target_properties(zetha-rdb PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+install(TARGETS
+    zetha-mem
+    zetha-rdb
+    RUNTIME DESTINATION bin
+)
+
+
 if(ZETHADB_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
