@@ -33,9 +33,17 @@ set_target_properties(zetha-rdb PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+add_executable(zetha-index ZethaINDEX-CLI.cpp)
+target_include_directories(zetha-index PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(zetha-index PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+)
+
 install(TARGETS
     zetha-mem
     zetha-rdb
+    zetha-index
     RUNTIME DESTINATION bin
 )
 

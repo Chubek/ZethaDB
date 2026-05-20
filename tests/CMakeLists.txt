@@ -38,3 +38,15 @@ target_compile_definitions(stage10_e2e_azmatest PRIVATE ZETHADB_SOURCE_DIR="${CM
 set_target_properties(stage10_e2e_azmatest PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 add_test(NAME stage10_e2e COMMAND bash ${CMAKE_SOURCE_DIR}/tests/e2e/smoke_stage10.sh)
 set_tests_properties(stage10_e2e PROPERTIES LABELS "e2e;noexec;full_pipeline")
+
+add_executable(zethaindex_unit_tests unit/test_zethaindex.cpp)
+target_include_directories(zethaindex_unit_tests PRIVATE ${CMAKE_CURRENT_LIST_DIR}/..)
+set_target_properties(zethaindex_unit_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+add_noexec_wrapped_test(zethaindex_unit_tests zethaindex_unit_tests)
+set_tests_properties(zethaindex_unit_tests PROPERTIES LABELS "unit;noexec;full_pipeline")
+
+add_executable(zethaindex_cli_unit_tests unit/test_zethaindex_cli.cpp)
+target_include_directories(zethaindex_cli_unit_tests PRIVATE ${CMAKE_CURRENT_LIST_DIR}/..)
+set_target_properties(zethaindex_cli_unit_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+add_noexec_wrapped_test(zethaindex_cli_unit_tests zethaindex_cli_unit_tests)
+set_tests_properties(zethaindex_cli_unit_tests PROPERTIES LABELS "unit;noexec;full_pipeline")
